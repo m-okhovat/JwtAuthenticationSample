@@ -4,9 +4,9 @@ using Microsoft.EntityFrameworkCore;
 
 namespace JwtAuthenticationSample.Contexts
 {
-    public class ApplicationContext : IdentityDbContext<ApplicationUser>
+    public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     {
-        public ApplicationContext(DbContextOptions options) : base(options)
+        public ApplicationDbContext(DbContextOptions options) : base(options)
         {
 
         }
