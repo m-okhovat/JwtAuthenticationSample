@@ -6,5 +6,6 @@ namespace JwtAuthenticationSample.Services
     public interface IUserService
     {
         Task<string> RegisterAsync(RegisterModel model);
+        Task<AuthenticationResultModel> GenerateAuthenticationToken(AuthenticationRequestModel model);
     }
 }
