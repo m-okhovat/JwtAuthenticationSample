@@ -1,4 +1,5 @@
 ﻿using JwtAuthenticationSample.Configurations;
+using JwtAuthenticationSample.Constants;
 using JwtAuthenticationSample.Models;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Options;
@@ -99,6 +100,32 @@ namespace JwtAuthenticationSample.Services
                 expires: DateTime.UtcNow.AddMinutes(_jwt.DurationInMinutes),
                 signingCredentials: signingCredentials);
             return jwtSecurityToken;
+        }
+
+        public async Task<string> AddRoleAsync(AddRoleModel model)
+        {
+            var user = await _userManager.FindByEmailAsync(model.Email);
+            if (user == null)
+            {
+                return $"No Accounts Registered with {model.Email}.";
+            }
+            if (await _userManager.CheckPasswordAsync(user, model.Password))
+            {
+                var roleExists = Enum.GetNames(typeof(AuthorizationConstants.Roles))
+                    .Any(x => x.ToLower() == model.Role.ToLower());
+
+                if (roleExists)
+                {
+                    var validRole = Enum.GetValues(typeof(AuthorizationConstants.Roles))
+                                    .Cast<AuthorizationConstants.Roles>()
+                                    .FirstOrDefault(x => x.ToString().ToLower() == model.Role.ToLower());
+
+                    await _userManager.AddToRoleAsync(user, validRole.ToString());
+                    return $"Added {model.Role} to user {model.Email}.";
+                }
+                return $"Role {model.Role} not found.";
+            }
+            return $"Incorrect Credentials for user {user.Email}.";
         }
     }
 }
