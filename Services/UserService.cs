@@ -14,9 +14,10 @@ namespace JwtAuthenticationSample.Services
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly ApplicationDbContext _context;
         private readonly ITokenGenerator _tokenGenerator;
+
         public UserService(UserManager<ApplicationUser> userManager,
-                           ApplicationDbContext context,
-                           ITokenGenerator tokenGenerator)
+            ApplicationDbContext context,
+            ITokenGenerator tokenGenerator)
         {
             _userManager = userManager;
             _context = context;
@@ -40,58 +41,65 @@ namespace JwtAuthenticationSample.Services
                 {
                     await _userManager.AddToRoleAsync(user, Constants.AuthorizationConstants.DefaultRole.ToString());
                 }
+
                 return $"User Registered with username {user.UserName}";
             }
-            else
-            {
-                return $"Email {user.Email } is already registered.";
-            }
+            return $"Email {user.Email} is already registered.";
         }
 
-        public async Task<AuthenticationResultModel> GenerateAuthenticationToken(AuthenticationRequestModel model)
+        public async Task<AuthenticationResultModel> GenerateJwtByUserPass(AuthenticationRequestModel model)
         {
-            var authenticationModel = new AuthenticationResultModel();
             var user = await _userManager.FindByEmailAsync(model.Email);
             if (user == null)
-            {
-                authenticationModel.IsAuthenticated = false;
-                authenticationModel.Message = $"No Accounts Registered with {model.Email}.";
-                return authenticationModel;
-            }
+                return AuthenticationResultModel.Failed($"No Accounts Registered with {model.Email}.");
+
             if (await _userManager.CheckPasswordAsync(user, model.Password))
             {
-                authenticationModel.IsAuthenticated = true;
-                var jwtSecurityToken = await _tokenGenerator.CreateJwtToken(user);
-                authenticationModel.Token = new JwtSecurityTokenHandler().WriteToken(jwtSecurityToken);
-                authenticationModel.Email = user.Email;
-                authenticationModel.UserName = user.UserName;
-                var rolesList = await _userManager.GetRolesAsync(user).ConfigureAwait(false);
-                authenticationModel.Roles = rolesList.ToList();
-
+                var refreshToken = new RefreshToken();
                 if (user.RefreshTokens.Any(a => a.IsActive))
-                {
-                    var activeRefreshToken = user.RefreshTokens.FirstOrDefault(a => a.IsActive);
-                    authenticationModel.RefreshToken = activeRefreshToken.Token;
-                    authenticationModel.RefreshTokenExpiration = activeRefreshToken.Expires;
-                }
+                    refreshToken = user.RefreshTokens.FirstOrDefault(a => a.IsActive);
                 else
                 {
-                    var refreshToken = RefreshTokenGenerator.CreateRefreshToken();
-                    authenticationModel.RefreshToken = refreshToken.Token;
-                    authenticationModel.RefreshTokenExpiration = refreshToken.Expires;
+                    refreshToken = RefreshTokenGenerator.CreateRefreshToken();
                     user.RefreshTokens.Add(refreshToken);
                     _context.Update(user);
                     _context.SaveChanges();
                 }
 
-                return authenticationModel;
+                return await GetAuthenticationResultModel(user, refreshToken);
             }
-            authenticationModel.IsAuthenticated = false;
-            authenticationModel.Message = $"Incorrect Credentials for user {user.Email}.";
-            return authenticationModel;
+
+            return AuthenticationResultModel.Failed("Incorrect Credentials for user {user.Email}.");
         }
 
 
+        public async Task<AuthenticationResultModel> GenerateJwtByRefreshToken(string token)
+        {
+            var user = _context.Users.SingleOrDefault(u => u.RefreshTokens.Any(t => t.Token == token));
+            if (user == null)
+                return AuthenticationResultModel.Failed($"Token did not match any users.");
+
+            var refreshToken = user.RefreshTokens.Single(x => x.Token == token);
+
+            if (!refreshToken.IsActive)
+                return AuthenticationResultModel.Failed($"Token Not Active.");
+
+            //Revoke Current Refresh Token
+            refreshToken.Revoked = DateTime.UtcNow;
+
+            //Generate new Refresh Token and save to Database
+            var newRefreshToken = RefreshTokenGenerator.CreateRefreshToken();
+            user.RefreshTokens.Add(newRefreshToken);
+            _context.Update(user);
+            _context.SaveChanges();
+
+            return await GetAuthenticationResultModel(user, newRefreshToken);
+        }
+
+        public ApplicationUser GetById(string id)
+        {
+            return _context.Users.Find(id);
+        }
 
         public async Task<string> AddRoleAsync(AddRoleModel model)
         {
@@ -100,6 +108,7 @@ namespace JwtAuthenticationSample.Services
             {
                 return $"No Accounts Registered with {model.Email}.";
             }
+
             if (await _userManager.CheckPasswordAsync(user, model.Password))
             {
                 var roleExists = Enum.GetNames(typeof(AuthorizationConstants.Roles))
@@ -108,17 +117,36 @@ namespace JwtAuthenticationSample.Services
                 if (roleExists)
                 {
                     var validRole = Enum.GetValues(typeof(AuthorizationConstants.Roles))
-                                    .Cast<AuthorizationConstants.Roles>()
-                                    .FirstOrDefault(x => x.ToString().ToLower() == model.Role.ToLower());
+                        .Cast<AuthorizationConstants.Roles>()
+                        .FirstOrDefault(x => x.ToString().ToLower() == model.Role.ToLower());
 
                     await _userManager.AddToRoleAsync(user, validRole.ToString());
                     return $"Added {model.Role} to user {model.Email}.";
                 }
+
                 return $"Role {model.Role} not found.";
             }
+
             return $"Incorrect Credentials for user {user.Email}.";
         }
 
+        private async Task<AuthenticationResultModel> GetAuthenticationResultModel(ApplicationUser user,
+            RefreshToken refreshToken)
+        {
+            //Generates new jwt
+
+            var authenticationModel = new AuthenticationResultModel();
+            authenticationModel.IsAuthenticated = true;
+            JwtSecurityToken jwtSecurityToken = await _tokenGenerator.CreateJwtToken(user);
+            authenticationModel.Token = new JwtSecurityTokenHandler().WriteToken(jwtSecurityToken);
+            authenticationModel.Email = user.Email;
+            authenticationModel.UserName = user.UserName;
+            var rolesList = await _userManager
+                .GetRolesAsync(user).ConfigureAwait(false);
+            authenticationModel.Roles = rolesList.ToList();
+            authenticationModel.RefreshToken = refreshToken;
+            return authenticationModel;
+        }
 
     }
 }

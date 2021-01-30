@@ -1,13 +1,14 @@
-﻿using System;
+﻿using JwtAuthenticationSample.Configurations;
+using JwtAuthenticationSample.Models;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.Tokens;
+using System;
 using System.IdentityModel.Tokens.Jwt;
 using System.Linq;
 using System.Security.Claims;
 using System.Text;
 using System.Threading.Tasks;
-using JwtAuthenticationSample.Configurations;
-using JwtAuthenticationSample.Models;
-using Microsoft.AspNetCore.Identity;
-using Microsoft.IdentityModel.Tokens;
 
 namespace JwtAuthenticationSample.Services
 {
@@ -17,10 +18,10 @@ namespace JwtAuthenticationSample.Services
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly JWT _jwt;
 
-        public TokenGenerator(UserManager<ApplicationUser> userManager, JWT jwt)
+        public TokenGenerator(UserManager<ApplicationUser> userManager, IOptions<JWT> jwt)
         {
             _userManager = userManager;
-            _jwt = jwt;
+            _jwt = jwt.Value;
         }
 
         public async Task<JwtSecurityToken> CreateJwtToken(ApplicationUser user)

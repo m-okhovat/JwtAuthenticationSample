@@ -1,8 +1,7 @@
 ﻿using JwtAuthenticationSample.Models;
 using JwtAuthenticationSample.Services;
-using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using System;
 using System.Threading.Tasks;
 
 namespace JwtAuthenticationSample.Controllers
@@ -12,6 +11,7 @@ namespace JwtAuthenticationSample.Controllers
     public class UsersController : ControllerBase
     {
         private readonly IUserService _userService;
+
         public UsersController(IUserService userService)
         {
             _userService = userService;
@@ -27,8 +27,19 @@ namespace JwtAuthenticationSample.Controllers
         [HttpPost("token")]
         public async Task<IActionResult> GetTokenAsync(AuthenticationRequestModel model)
         {
-            var result = await _userService.GenerateAuthenticationToken(model);
-            return Ok(result);
+            var authenticationResult = await _userService.GenerateJwtByUserPass(model);
+            Response.SetRefreshToken(authenticationResult.RefreshToken);
+            return Ok(authenticationResult);
+        }
+
+        [HttpPost("refresh-token")]
+        public async Task<IActionResult> RefreshToken()
+        {
+            var refreshToken = Request.Cookies["refreshToken"];
+            var authenticationResultModel = await _userService.GenerateJwtByRefreshToken(refreshToken);
+            if (!authenticationResultModel.IsRefreshTokenNull)
+                Response.SetRefreshToken(authenticationResultModel.RefreshToken);
+            return Ok(authenticationResultModel);
         }
 
         [HttpPost("addRole")]
@@ -38,15 +49,12 @@ namespace JwtAuthenticationSample.Controllers
             return Ok(result);
         }
 
-
-        private void SetRefreshTokenInCookie(string refreshToken)
+        [Authorize]
+        [HttpPost("tokens/{id}")]
+        public IActionResult GetRefreshTokens(string id)
         {
-            var cookieOptions = new CookieOptions
-            {
-                HttpOnly = true,
-                Expires = DateTime.UtcNow.AddDays(10),
-            };
-            Response.Cookies.Append("refreshToken", refreshToken, cookieOptions);
+            var user = _userService.GetById(id);
+            return Ok(user.RefreshTokens);
         }
     }
 }
