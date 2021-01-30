@@ -63,6 +63,7 @@ namespace JwtAuthenticationSample
 
             services.AddControllers();
             services.AddScoped<IUserService, UserService>();
+            services.AddScoped<ITokenGenerator, TokenGenerator>();
 
         }
 
